@@ -1,0 +1,13 @@
+# git history
+.git/
+.vscode
+.gitignore
+
+# npm
+node_modules
+
+# env
+.env
+
+# editor
+.editorconfig

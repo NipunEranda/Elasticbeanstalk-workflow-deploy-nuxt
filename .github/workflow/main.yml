@@ -1,0 +1,81 @@
+name: server-deploy
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ${{ matrix.os }}
+    env:
+      AWS_ACCESS_KEY_ID: ${{secrets.ACCESS_KEY_ID}}
+      AWS_SECRET_ACCESS_KEY: ${{secrets.SECRET_ACCESS_KEY}}
+      AWS_DEFAULT_REGION: ${{secrets.AWS_DEFAULT_REGION}}
+
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+        node: [16.15.1]
+
+    steps:
+      - name: Checkout 🛎
+        uses: actions/checkout@master
+
+      # Setup your application .env values
+      # - name: Set .env
+      #   run: |
+      #     touch .env
+      #     echo VARIABLE=VALUE > .env
+      #   env:
+      #     VARIABLE: ${{ secrets.VARIABLE }} 
+
+      - name: Set env to production
+        if: endsWith(github.ref, '/main')
+        run: |
+          echo "application_name=${{secrets.EB_APPLICATION_NAME}}" >> $GITHUB_ENV
+          echo "environment_name=${{secrets.EB_ENVIRONMENT_NAME}}" >> $GITHUB_ENV
+          echo "NODE_ENV=production" >> $GITHUB_ENV
+          export ACCESS_KEY_ID=${{secrets.ACCESS_KEY_ID}}
+          export SECRET_ACCESS_KEY=${{secrets.SECRET_ACCESS_KEY}}
+          export AWS_DEFAULT_REGION=${{secrets.AWS_DEFAULT_REGION}}
+          
+      - name: Setup node env 🏗
+        uses: actions/setup-node@v2.1.2
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: Cache node_modules 📦
+        uses: actions/cache@v2
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+      - name: Installing NPM
+        run: npm cache clean --force && npm i parse-path && npm install --from-lock-file
+
+      - name: Building application
+        run: |
+          npm run build
+          npm run generate
+          
+      - name: Install Python 3.9
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.9
+      - name: Install EB CLI using pip
+        run: |
+          python -m pip install --upgrade pip
+          pip install awsebcli
+
+      - name: Deploy to Elastic Beanstalk
+        run: |
+          eb init --region ${{secrets.AWS_DEFAULT_REGION}} ${{secrets.EB_APPLICATION_NAME}} --platform "${{secrets.EB_PLATFORM}}"
+          eb deploy
+
+      - name: Deployed!
+        run: echo App deployed to ELB
